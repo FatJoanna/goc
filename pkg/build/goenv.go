@@ -48,11 +48,12 @@ func (b *Build) readProjectMetaInfo() {
 	}
 
 	// 如果当前目录不是工程根目录，那再次 go list 一次，获取整个工程的包信息
-	if b.CurWd != b.CurModProjectDir {
-		b.Pkgs = b.listPackages(b.CurModProjectDir)
-	} else {
-		b.Pkgs = pkgs
-	}
+	b.Pkgs = pkgs
+	//if b.CurWd != b.CurModProjectDir {
+	//	b.Pkgs = b.listPackages(b.CurModProjectDir)
+	//} else {
+	//	b.Pkgs = pkgs
+	//}
 
 	// check if project is in vendor mod
 	b.checkIfVendorMod()
