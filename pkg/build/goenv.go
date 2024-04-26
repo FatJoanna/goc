@@ -32,6 +32,7 @@ func (b *Build) readProjectMetaInfo() {
 	b.GOPATH = b.readGOPATH()
 	b.GOBIN = b.readGOBIN()
 	// 获取 [packages] 及其依赖的 package list
+	log.Infof("b.curwd:%v", b.CurWd)
 	pkgs := b.listPackages(b.CurWd)
 
 	// get mod info

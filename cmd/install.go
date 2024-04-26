@@ -28,6 +28,8 @@ var installCmd = &cobra.Command{
 func init() {
 	installCmd.Flags().StringVarP(&gocmode, "gocmode", "", "count", "coverage mode: set, count, atomic, watch")
 	installCmd.Flags().StringVarP(&gochost, "gochost", "", "127.0.0.1:7777", "specify the host of the goc sever")
+	installCmd.Flags().StringVarP(&gocdir, "gocdir", "", "", "相对路径，比如当前在maigo目录下，要插桩content/gosssip,--gocdir=contnt/gossip")
+
 	rootCmd.AddCommand(installCmd)
 }
 
@@ -37,6 +39,7 @@ func installAction(cmd *cobra.Command, args []string) {
 
 	b := build.NewInstall(
 		build.WithHost(gochost),
+		build.WithDir(gocdir),
 		build.WithMode(gocmode),
 		build.WithFlagSets(sets),
 		build.WithArgs(args),

@@ -115,7 +115,15 @@ func (b *Build) buildCmdArgsParse() {
 	}
 
 	// 找出设置的 go flag
-	curWd, err := os.Getwd()
+
+	if b.CurWd == "" {
+		b.CurWd, err = os.Getwd()
+	} else {
+		curWd, err := os.Getwd()
+		if err == nil {
+			b.CurWd = curWd + "/" + b.CurWd
+		}
+	}
 	if err != nil {
 		log.Fatalf("fail to get current working directory: %v", err)
 	}
@@ -146,7 +154,7 @@ func (b *Build) buildCmdArgsParse() {
 	})
 
 	b.Goflags = flags
-	b.CurWd = curWd
+
 	b.GoArgs = goFlagSets.Args()
 	return
 }

@@ -14,6 +14,7 @@
 package build
 
 import (
+	"github.com/qiniu/goc/v2/pkg/log"
 	"github.com/spf13/pflag"
 )
 
@@ -30,7 +31,12 @@ func WithMode(mode string) gocOption {
 		b.Mode = mode
 	}
 }
-
+func WithDir(gocdir string) gocOption {
+	return func(b *Build) {
+		log.Infof("gocdir config")
+		b.CurWd = gocdir
+	}
+}
 func WithArgs(args []string) gocOption {
 	return func(b *Build) {
 		b.Args = args
