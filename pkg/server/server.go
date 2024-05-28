@@ -127,6 +127,9 @@ func RunGocServerUntilExit(host string, s store.Store) error {
 		v2.GET("/internal/register", gs.register)
 		v2.GET("/internal/ws/rpcstream", gs.serveRpcStream)
 		v2.GET("/internal/ws/watchstream", gs.serveWatchInternalStream)
+
+		v2.GET("/cover/profile/html", gs.getProfiles_html)
+
 	}
 
 	go gs.watchLoop()

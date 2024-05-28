@@ -16,7 +16,11 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -92,6 +96,300 @@ func (gs *gocServer) removeAgents(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, nil)
 	}
+}
+
+func (gs *gocServer) getProfiles_html(c *gin.Context) {
+	idQuery := c.Query("id")
+	ifInIdMap := idMaps(idQuery)
+	base_branch := c.Query("base")
+	if base_branch == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "缺少base参数，值为分支名字",
+		})
+		return
+	}
+	GO_PROJ_DIR := os.Getenv("GO_PROJ_DIR")
+	if GO_PROJ_DIR == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "缺少环境变量 GO_PROJ_DIR，值为maigo工程路径",
+		})
+		return
+	}
+
+	diff_type := c.Query("type")
+
+	skippatternRaw := c.Query("skippattern")
+	var skippattern []string
+	if skippatternRaw != "" {
+		skippattern = strings.Split(skippatternRaw, ",")
+	}
+
+	extra := c.Query("extra")
+	isExtra := filterExtra(extra)
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	mergedProfiles := make([][]*cover.Profile, 0)
+
+	gs.agents.Range(func(key, value interface{}) bool {
+		// check if id is in the query ids
+		if !ifInIdMap(key.(string)) {
+			// not in
+			return true
+		}
+
+		agent, ok := value.(*gocCoveredAgent)
+		if !ok {
+			return false
+		}
+
+		// check if extra matches
+		if !isExtra(agent.Extra) {
+			// not match
+			return true
+		}
+
+		wg.Add(1)
+		// 并发 rpc，且每个 rpc 设超时时间 10 second
+		go func() {
+			defer wg.Done()
+
+			timeout := time.Duration(10 * time.Second)
+			done := make(chan error, 1)
+
+			var req ProfileReq = "getprofile"
+			var res ProfileRes
+			go func() {
+				// lock-free
+				rpc := agent.rpc
+				if rpc == nil || agent.Status == DISCONNECT {
+					done <- nil
+					return
+				}
+				err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
+				if err != nil {
+					log.Errorf("fail to get profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
+				}
+				done <- err
+			}()
+
+			select {
+			// rpc 超时
+			case <-time.After(timeout):
+				log.Warnf("rpc call timeout: %v", agent.Hostname)
+				// 关闭链接
+				agent.closeRpcConnOnce()
+			case err := <-done:
+				// 调用 rpc 发生错误
+				if err != nil {
+					// 关闭链接
+					agent.closeRpcConnOnce()
+				}
+			}
+			// append profile
+			profile, err := convertProfile([]byte(res))
+			if err != nil {
+				log.Errorf("fail to convert the received profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
+				// 关闭链接
+				agent.closeRpcConnOnce()
+				return
+			}
+
+			// check if skippattern matches
+			newProfile := filterProfileByPattern(skippattern, profile)
+
+			mu.Lock()
+			defer mu.Unlock()
+			mergedProfiles = append(mergedProfiles, newProfile)
+		}()
+
+		return true
+	})
+
+	// 一直等待并发的 rpc 都回应
+	wg.Wait()
+
+	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": err.Error(),
+		})
+		return
+	}
+
+	var buff bytes.Buffer
+	err = cov.DumpProfile(merged, &buff)
+	log.Infof("cov.dumpprofile err", err)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": err.Error(),
+		})
+		return
+	}
+	// ------------    generate html    -------------
+	// 改变当前工作目录
+	err = os.Chdir(GO_PROJ_DIR)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "change to project dir failed!" + err.Error(),
+		})
+		return
+	}
+	//拉取一下最新的代码
+	cmdChangeBranchShell := "git reset --hard && git pull && git checkout " + base_branch
+	//cmdChangeBranchShell := "git checkout " + base_branch
+	log.Infof(cmdChangeBranchShell)
+	cmdChangeBranch := exec.Command("bash", "-c", cmdChangeBranchShell)
+	// 创建一个buffer来保存命令的输出
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmdChangeBranch.Stdout = &out
+	cmdChangeBranch.Stderr = &stderr
+
+	if err = cmdChangeBranch.Run(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "git change branch failed" + err.Error() + stderr.String(),
+		})
+		return
+	}
+
+	// 运行 gocov convert merged.cov 并将输出传递给 gocov-html
+	// 定义输入和输出文件名
+	inputFile := "coverage" + extra + ".cov"
+	outputHTMLFilePath := "coverage" + extra + ".html" // 生成的HTML/XML报告文件路径
+	reportHTMLFilePath := "report" + extra + ".html"
+	defer func() {
+		err = os.Remove(inputFile)
+		if err != nil {
+			fmt.Printf("Error deleting file %s: %v\n", inputFile, err)
+		}
+		err = os.Remove(outputHTMLFilePath)
+		if err != nil {
+			fmt.Printf("Error deleting file %s: %v\n", outputHTMLFilePath, err)
+		}
+		err = os.Remove(reportHTMLFilePath)
+		if err != nil {
+			fmt.Printf("Error deleting file %s: %v\n", reportHTMLFilePath, err)
+		}
+	}()
+	if diff_type == "diff" {
+		outputHTMLFilePath = "coverage" + extra + ".xml"
+	}
+
+	err = os.WriteFile(inputFile, buff.Bytes(), 0644)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "write to cov file failed" + err.Error(),
+		})
+		return
+	}
+	// 创建第一个命令 gocov convert coverage.cov
+	cmdConvert := exec.Command("gocov", "convert", inputFile)
+
+	// 创建第二个命令 gocov-html
+	cmdHTML := exec.Command("gocov-html")
+	if diff_type == "diff" {
+		cmdHTML = exec.Command("gocov-xml")
+	}
+
+	// 创建一个管道用于连接两个命令
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+
+	// 将第一个命令的输出设置为管道的写入端
+	cmdConvert.Stdout = writer
+
+	// 将第二个命令的输入设置为管道的读取端
+	cmdHTML.Stdin = reader
+
+	// 设置第二个命令的输出为文件
+	outputHTMLFile, err := os.Create(outputHTMLFilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "os.create file failed" + err.Error(),
+		})
+		return
+	}
+	defer outputHTMLFile.Close()
+	cmdHTML.Stdout = outputHTMLFile
+
+	// 启动第一个命令
+	if err = cmdConvert.Start(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "gocov convert start failed " + err.Error(),
+		})
+		return
+	}
+
+	// 启动第二个命令
+	if err = cmdHTML.Start(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "gocov-html start failed  " + err.Error(),
+		})
+		return
+	}
+
+	// 等待第一个命令完成
+	if err = cmdConvert.Wait(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "gocov convert wait failed  " + err.Error(),
+		})
+		return
+	}
+
+	// 关闭管道的写入端，以通知第二个命令没有更多的输入了
+	writer.Close()
+
+	// 等待第二个命令完成
+	if err = cmdHTML.Wait(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "gocov-html wait failed  " + err.Error(),
+		})
+		return
+	}
+
+	htmlContent, err := ioutil.ReadFile(outputHTMLFilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"msg": "read file outputhtml file path failed" + err.Error(),
+		})
+		return
+	}
+
+	if diff_type == "diff" {
+		// 定义要执行的命令和参数
+		compare_branch := c.Query("compare")
+		if compare_branch == "" {
+			compare_branch = "master"
+		}
+		cmdDIFFCover := exec.Command("diff-cover", outputHTMLFilePath, "--compare-branch="+compare_branch, "--html-report", reportHTMLFilePath)
+
+		// 创建一个新的缓冲变量来存储命令的输出
+		cmdDIFFCover.Stdout = &out    // 将命令的标准输出重定向到我们的缓冲变量
+		cmdDIFFCover.Stderr = &stderr // 将命令的标准错误输出重定向到我们的缓冲变量（如果需要的话）
+
+		// 执行命令
+		err = cmdDIFFCover.Run()
+		if err != nil {
+			// 如果有错误，打印到标准错误并返回非零退出码
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"msg": "diff-cover run failed " + err.Error() + stderr.String(),
+			})
+			return
+		}
+		htmlContent, err = ioutil.ReadFile(reportHTMLFilePath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"msg": "read file reporthtml file path failed" + err.Error(),
+			})
+			return
+		}
+	}
+	// 将HTML内容发送给HTTP客户端
+	c.Header("Content-Type", "text/html")
+	c.String(http.StatusOK, string(htmlContent))
 }
 
 // getProfiles get and merge all agents' informations

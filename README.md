@@ -72,9 +72,26 @@ qiniu.com/kodo/apiserver/server/main.go:42.49,43.13 1 0
 # importpath/filename.go:Line0.Col1,Line1,Col1 1 0
 ```
 
+#### 6. 新增diff和全量覆盖率html请求
+1. 需要在goc server所在机器中下载maigo工程代码
+2. 设置环境变量 GO_PROJ_DIR
+    例：export GO_PROJ_DIR="/deploy/maigo"
+3. 请求
+    新增请求/v2/cover/profile/html
+    参数与v2/cover/profile一致
+    新增参数：
+        base: 代表所测分支
+        compare: 代表对比分支
+    例
+    1. /v2/cover/profile/html?base=f-search-cmt， 获取此分支全量覆盖率
+    2. /v2/cover/profile/html?base=f-search-cmt&type=diff 获取此分支增量覆盖率
+    3. 其他参数如： /v2/cover/profile/html?base=f-search-cmt&type=diff&skippattern=protos,domain,pb.go&compare=master&extra=gossip_darwin_cov
+
+
+
 除此之外，原来的全局整体覆盖率可正常获取，不受影响。
 
-#### 6. 跨平台支持
+#### 7. 跨平台支持
 
 1. 支持 `Linux/Macos/Windows`
 2. 支持 go 的交叉编译
