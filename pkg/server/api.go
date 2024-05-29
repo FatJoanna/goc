@@ -237,7 +237,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		return
 	}
 	//拉取一下最新的代码
-	cmdChangeBranchShell := "git reset --hard && git pull && git checkout " + base_branch
+	cmdChangeBranchShell := "git reset --hard && git fetch && git checkout " + base_branch + " && git pull"
 	//cmdChangeBranchShell := "git checkout " + base_branch
 	log.Infof(cmdChangeBranchShell)
 	cmdChangeBranch := exec.Command("bash", "-c", cmdChangeBranchShell)
