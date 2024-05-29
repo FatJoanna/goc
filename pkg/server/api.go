@@ -236,9 +236,20 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		})
 		return
 	}
-	//拉取一下最新的代码
+	// 判断是否处于流离标头状态，切换代码的方法不一样
+	detached, err := isDetachedHead()
+	if err != nil {
+		fmt.Println("Error checking Git status:", err)
+		return
+	}
 	cmdChangeBranchShell := "git reset --hard && git fetch && git checkout " + base_branch + " && git pull"
-	//cmdChangeBranchShell := "git checkout " + base_branch
+	if detached {
+		cmdChangeBranchShell = "git stash && git checkout " + base_branch
+		log.Infof("当前处于游离头状态")
+	} else {
+		log.Infof("当前不在游离头状态")
+	}
+	//拉取一下最新的代码
 	log.Infof(cmdChangeBranchShell)
 	cmdChangeBranch := exec.Command("bash", "-c", cmdChangeBranchShell)
 	// 创建一个buffer来保存命令的输出
@@ -379,7 +390,8 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		if err != nil {
 			// 如果有错误，打印到标准错误并返回非零退出码
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"msg": "diff-cover run failed " + err.Error() + stderr.String(),
+				"msg":        "diff-cover run failed " + err.Error() + stderr.String(),
+				"annotation": "当前只支持分支对比，不支持commitid",
 			})
 			return
 		}
@@ -394,6 +406,24 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	// 将HTML内容发送给HTTP客户端
 	c.Header("Content-Type", "text/html")
 	c.String(http.StatusOK, string(htmlContent))
+}
+
+func isDetachedHead() (bool, error) {
+	// 执行 git status --short --branch 命令
+	cmd := exec.Command("git", "status", "--short", "--branch")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return false, err
+	}
+
+	// 解析输出
+	output := out.String()
+	// 通常，如果处于游离头状态，输出会类似于 "## HEAD (detached at <commit-hash>)"
+	// 或者没有分支信息（直接显示 commit hash）
+	// 我们检查输出是否包含 "HEAD (detached" 来确定是否处于游离头状态
+	return strings.Contains(output, "HEAD (detached"), nil
 }
 
 // getProfiles get and merge all agents' informations
