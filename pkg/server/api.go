@@ -299,7 +299,9 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	defer writer.Close()
 
 	// 将第一个命令的输出设置为管道的写入端
+	var convertStderr bytes.Buffer
 	cmdConvert.Stdout = writer
+	cmdConvert.Stderr = &convertStderr
 
 	// 将第二个命令的输入设置为管道的读取端
 	cmdHTML.Stdin = reader
@@ -314,11 +316,13 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	}
 	defer outputHTMLFile.Close()
 	cmdHTML.Stdout = outputHTMLFile
+	var cmdHtmlStderr bytes.Buffer
+	cmdHTML.Stderr = &cmdHtmlStderr
 
 	// 启动第一个命令
 	if err = cmdConvert.Start(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "gocov convert start failed " + err.Error(),
+			"msg": "gocov convert start failed:" + err.Error() + convertStderr.String(),
 		})
 		return
 	}
@@ -326,7 +330,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	// 启动第二个命令
 	if err = cmdHTML.Start(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "gocov-html start failed  " + err.Error(),
+			"msg": "gocov-html start failed :" + cmdHtmlStderr.String(),
 		})
 		return
 	}
@@ -334,7 +338,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	// 等待第一个命令完成
 	if err = cmdConvert.Wait(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "gocov convert wait failed  " + err.Error(),
+			"msg": "gocov convert wait failed:" + convertStderr.String(),
 		})
 		return
 	}
@@ -345,7 +349,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	// 等待第二个命令完成
 	if err = cmdHTML.Wait(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"msg": "gocov-html wait failed  " + err.Error(),
+			"msg": "gocov-html wait failed  " + cmdHtmlStderr.String(),
 		})
 		return
 	}
