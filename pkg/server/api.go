@@ -236,12 +236,42 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		})
 		return
 	}
+	// 定义输入和输出文件名
+	inputFile := "coverage" + extra + ".cov"
+	outputHTMLFilePath := "coverage" + extra + ".html" // 生成的HTML/XML报告文件路径
+	reportHTMLFilePath := "report" + extra + ".html"
 	// 判断是否处于流离标头状态，切换代码的方法不一样
 	detached, err := isDetachedHead()
 	if err != nil {
 		fmt.Println("Error checking Git status:", err)
 		return
 	}
+	branchExist, err := isBranchExist(base_branch)
+	fmt.Println("|||||  branch exist", branchExist)
+	if err == nil && !branchExist {
+		fmt.Println("|||||| branch not exist, get from cache file")
+		var htmlContent []byte
+		var fileErr error
+		if diff_type != "diff" {
+			htmlContent, fileErr = ioutil.ReadFile(outputHTMLFilePath)
+
+		} else {
+			htmlContent, fileErr = ioutil.ReadFile(reportHTMLFilePath)
+
+		}
+		if fileErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"msg": "read file reporthtml file path failed" + fileErr.Error(),
+			})
+			return
+		}
+		// 将HTML内容发送给HTTP客户端
+		c.Header("Content-Type", "text/html")
+		c.String(http.StatusOK, string(htmlContent))
+		return
+
+	}
+	fmt.Println("||||    branch exist generate new diff result")
 	cmdChangeBranchShell := "git reset --hard && git fetch && git checkout " + base_branch + " && git pull"
 	if detached {
 		cmdChangeBranchShell = "git stash && git checkout " + base_branch
@@ -252,7 +282,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	//拉取一下最新的代码
 	log.Infof(cmdChangeBranchShell)
 	cmdChangeBranch := exec.Command("bash", "-c", cmdChangeBranchShell)
-	// 创建一个buffer来保存命令的输出
+
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmdChangeBranch.Stdout = &out
@@ -266,11 +296,8 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	}
 
 	// 运行 gocov convert merged.cov 并将输出传递给 gocov-html
-	// 定义输入和输出文件名
-	inputFile := "coverage" + extra + ".cov"
-	outputHTMLFilePath := "coverage" + extra + ".html" // 生成的HTML/XML报告文件路径
-	reportHTMLFilePath := "report" + extra + ".html"
-	defer func() {
+
+	if branchExist {
 		err = os.Remove(inputFile)
 		if err != nil {
 			fmt.Printf("Error deleting file %s: %v\n", inputFile, err)
@@ -283,7 +310,8 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		if err != nil {
 			fmt.Printf("Error deleting file %s: %v\n", reportHTMLFilePath, err)
 		}
-	}()
+	}
+
 	if diff_type == "diff" {
 		outputHTMLFilePath = "coverage" + extra + ".xml"
 	}
@@ -424,6 +452,28 @@ func isDetachedHead() (bool, error) {
 	// 或者没有分支信息（直接显示 commit hash）
 	// 我们检查输出是否包含 "HEAD (detached" 来确定是否处于游离头状态
 	return strings.Contains(output, "HEAD (detached"), nil
+}
+
+func isBranchExist(base_branch string) (bool, error) {
+	// 执行 git status --short --branch 命令
+
+	branchExistShell := "git ls-remote origin " + base_branch
+	fmt.Println("|||| branch exist shell", branchExistShell)
+	branchExist := exec.Command("bash", "-c", branchExistShell)
+	// 创建一个buffer来保存命令的输出
+	var out bytes.Buffer
+	branchExist.Stdout = &out
+
+	if err := branchExist.Run(); err != nil {
+		return false, err
+	}
+	output := out.String()
+	fmt.Println("||||||  out.String()", out.String())
+	if output == "" {
+		return false, nil
+	}
+	return true, nil
+
 }
 
 // getProfiles get and merge all agents' informations
