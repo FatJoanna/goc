@@ -63,6 +63,7 @@ type gocCoveredAgent struct {
 	Hostname      string `json:"hostname"`
 	CmdLine       string `json:"cmdline"`
 	Pid           string `json:"pid"`
+	FilePath      string `json:"filePath"` //表示该agent缓存覆盖率文件保存的路径
 
 	// 用户可以选择上报一些定制信息
 	// 比如不同 namespace 的 statefulset POD，它们的 hostname/cmdline/pid 都是一样的，
@@ -169,6 +170,8 @@ func (gs *gocServer) register(c *gin.Context) {
 
 	token := genToken(globalId)
 	id := strconv.Itoa(int(globalId))
+	filePath := "/tmp/cov_log/" + token + "_" + extra + ".txt"
+	fmt.Println("|||| filepath", filePath)
 
 	agent := &gocCoveredAgent{
 		Id:       id,
@@ -178,6 +181,7 @@ func (gs *gocServer) register(c *gin.Context) {
 		Token:    token,
 		Status:   DISCONNECT,
 		Extra:    extra,
+		FilePath: filePath,
 	}
 
 	// 持久化
@@ -190,6 +194,7 @@ func (gs *gocServer) register(c *gin.Context) {
 	}
 	// 维护 agent 连接
 	gs.agents.Store(id, agent)
+	fmt.Printf("||||  agent%v\n", agent)
 
 	log.Infof("one agent registered, id: %v, cmdline: %v, pid: %v, hostname: %v", id, agent.CmdLine, agent.Pid, agent.Hostname)
 

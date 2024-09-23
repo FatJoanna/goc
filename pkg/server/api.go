@@ -15,12 +15,14 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -44,8 +46,10 @@ func (gs *gocServer) listAgents(c *gin.Context) {
 		if !ifInIdMap(key.(string)) {
 			return true
 		}
+		fmt.Printf("||||||   gs.agents;%v,%v\n", key, value)
 
 		agent, ok := value.(*gocCoveredAgent)
+		fmt.Printf("||||||  agent:%v\n\n", value)
 		if !ok {
 			return false
 		}
@@ -96,6 +100,20 @@ func (gs *gocServer) removeAgents(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, nil)
 	}
+}
+
+func changeGocDir() {
+	// 验证环境变量是否设置成功
+	//value, exists := os.LookupEnv("GOC_RUN_PATH")
+	//if exists {
+	//	fmt.Println("GOC_RUN_PATH is set to:", value)
+	//	err := os.Chdir(value)
+	//	if err != nil {
+	//		fmt.Println("changeGocDir error:", err)
+	//	}
+	//} else {
+	//	fmt.Println("GOC_RUN_PATH is not set.")
+	//}
 }
 
 func (gs *gocServer) getProfiles_html(c *gin.Context) {
@@ -164,14 +182,29 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 				// lock-free
 				rpc := agent.rpc
 				if rpc == nil || agent.Status == DISCONNECT {
+					err := readFile(agent.FilePath, &res)
+					if err != nil {
+						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
+					}
+					done <- nil
+
+				} else if rpc != nil && agent.Status != DISCONNECT {
+					err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
+					if err != nil {
+						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
+					}
+					// 保存一下文件路径
+					err = saveToFile(agent.FilePath, res)
+					if err != nil {
+						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
+					}
+					done <- err
+				} else {
+					log.Errorf("fail return")
 					done <- nil
 					return
 				}
-				err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
-				if err != nil {
-					log.Errorf("fail to get profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
-				}
-				done <- err
+
 			}()
 
 			select {
@@ -294,6 +327,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		})
 		return
 	}
+	log.Infof("git checkout branch done")
 
 	// 运行 gocov convert merged.cov 并将输出传递给 gocov-html
 
@@ -359,6 +393,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	cmdHTML.Stderr = &cmdHtmlStderr
 
 	// 启动第一个命令
+	log.Infof("goc covert and goc-html/xml start")
 	if err = cmdConvert.Start(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": "gocov convert start failed:" + err.Error() + convertStderr.String(),
@@ -392,6 +427,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		})
 		return
 	}
+	log.Infof("goc covert and goc-html/xml done")
 
 	htmlContent, err := ioutil.ReadFile(outputHTMLFilePath)
 	if err != nil {
@@ -414,6 +450,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		cmdDIFFCover.Stderr = &stderr // 将命令的标准错误输出重定向到我们的缓冲变量（如果需要的话）
 
 		// 执行命令
+		log.Infof("diff-cover start")
 		err = cmdDIFFCover.Run()
 		if err != nil {
 			// 如果有错误，打印到标准错误并返回非零退出码
@@ -423,6 +460,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 			})
 			return
 		}
+		log.Infof("diff-cover end")
 		htmlContent, err = ioutil.ReadFile(reportHTMLFilePath)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -454,26 +492,86 @@ func isDetachedHead() (bool, error) {
 	return strings.Contains(output, "HEAD (detached"), nil
 }
 
-func isBranchExist(base_branch string) (bool, error) {
-	// 执行 git status --short --branch 命令
+func isBranchExist(baseBranch string) (bool, error) {
+	// 构造Git命令来验证远程分支是否存在
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/remotes/origin/%s", baseBranch))
 
-	branchExistShell := "git ls-remote origin " + base_branch
-	fmt.Println("|||| branch exist shell", branchExistShell)
-	branchExist := exec.Command("bash", "-c", branchExistShell)
-	// 创建一个buffer来保存命令的输出
+	// 创建一个buffer来保存命令的输出（虽然在这个命令中我们可能不需要输出）
 	var out bytes.Buffer
-	branchExist.Stdout = &out
+	cmd.Stdout = &out
 
-	if err := branchExist.Run(); err != nil {
+	// 执行命令
+	err := cmd.Run()
+
+	// 检查命令执行是否成功
+	if err != nil {
+		// 如果命令执行失败（即分支不存在），则认为是正常情况，返回false和nil
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.Exited() && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		// 如果命令执行失败且不是因为我们预期的退出码（1），则返回错误
 		return false, err
 	}
-	output := out.String()
-	fmt.Println("||||||  out.String()", out.String())
-	if output == "" {
-		return false, nil
-	}
-	return true, nil
 
+	// 如果命令成功执行（即没有错误返回），则认为分支存在
+	return true, nil
+}
+
+//func isBranchExist(base_branch string) (bool, error) {
+//	// 执行 git status --short --branch 命令
+//
+//	branchExistShell := "git ls-remote origin " + base_branch
+//	fmt.Println("|||| branch exist shell", branchExistShell)
+//	branchExist := exec.Command("bash", "-c", branchExistShell)
+//	// 创建一个buffer来保存命令的输出
+//	var out bytes.Buffer
+//	branchExist.Stdout = &out
+//
+//	if err := branchExist.Run(); err != nil {
+//		return false, err
+//	}
+//	output := out.String()
+//	fmt.Println("||||||  out.String()", out.String())
+//	if output == "" {
+//		return false, nil
+//	}
+//	return true, nil
+//
+//}
+
+func readFile(filename string, res *ProfileRes) error {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Errorf("readFile file not found:%v", err)
+			return errors.New("File not found")
+		} else {
+			return err
+		}
+	}
+	*res = ProfileRes(data)
+	return nil
+}
+
+func saveToFile(filename string, content ProfileRes) error {
+	if _, err := os.Stat(filepath.Dir(filename)); os.IsNotExist(err) {
+		err := os.MkdirAll(filepath.Dir(filename), 0755)
+		if err != nil {
+			return err
+		}
+	}
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	err = ioutil.WriteFile(filename, []byte(content), 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // getProfiles get and merge all agents' informations
@@ -525,18 +623,34 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 
 			var req ProfileReq = "getprofile"
 			var res ProfileRes
+			fmt.Printf("||||||   agent:%v\n", agent)
 			go func() {
 				// lock-free
 				rpc := agent.rpc
 				if rpc == nil || agent.Status == DISCONNECT {
+					err := readFile(agent.FilePath, &res)
+					if err != nil {
+						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
+					}
+					done <- nil
+
+				} else if rpc != nil && agent.Status != DISCONNECT {
+					err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
+					if err != nil {
+						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
+					}
+					// 保存一下文件路径
+					err = saveToFile(agent.FilePath, res)
+					if err != nil {
+						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
+					}
+					done <- err
+				} else {
+					log.Errorf("fail return")
 					done <- nil
 					return
 				}
-				err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
-				if err != nil {
-					log.Errorf("fail to get profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
-				}
-				done <- err
+
 			}()
 
 			select {
