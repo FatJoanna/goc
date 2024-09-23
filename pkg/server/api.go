@@ -526,6 +526,9 @@ func isBranchExist(base_branch string) (bool, error) {
 }
 
 func readFile(filename string, res *ProfileRes) error {
+	if filename == "" {
+		return nil
+	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
