@@ -102,20 +102,6 @@ func (gs *gocServer) removeAgents(c *gin.Context) {
 	}
 }
 
-func changeGocDir() {
-	// 验证环境变量是否设置成功
-	//value, exists := os.LookupEnv("GOC_RUN_PATH")
-	//if exists {
-	//	fmt.Println("GOC_RUN_PATH is set to:", value)
-	//	err := os.Chdir(value)
-	//	if err != nil {
-	//		fmt.Println("changeGocDir error:", err)
-	//	}
-	//} else {
-	//	fmt.Println("GOC_RUN_PATH is not set.")
-	//}
-}
-
 func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	idQuery := c.Query("id")
 	ifInIdMap := idMaps(idQuery)
@@ -492,52 +478,52 @@ func isDetachedHead() (bool, error) {
 	return strings.Contains(output, "HEAD (detached"), nil
 }
 
-func isBranchExist(baseBranch string) (bool, error) {
-	// 构造Git命令来验证远程分支是否存在
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/remotes/origin/%s", baseBranch))
-
-	// 创建一个buffer来保存命令的输出（虽然在这个命令中我们可能不需要输出）
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	// 执行命令
-	err := cmd.Run()
-
-	// 检查命令执行是否成功
-	if err != nil {
-		// 如果命令执行失败（即分支不存在），则认为是正常情况，返回false和nil
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.Exited() && exitErr.ExitCode() == 1 {
-			return false, nil
-		}
-		// 如果命令执行失败且不是因为我们预期的退出码（1），则返回错误
-		return false, err
-	}
-
-	// 如果命令成功执行（即没有错误返回），则认为分支存在
-	return true, nil
-}
-
-//func isBranchExist(base_branch string) (bool, error) {
-//	// 执行 git status --short --branch 命令
+//func isBranchExist(baseBranch string) (bool, error) {
+//	// 构造Git命令来验证远程分支是否存在
+//	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/remotes/origin/%s", baseBranch))
 //
-//	branchExistShell := "git ls-remote origin " + base_branch
-//	fmt.Println("|||| branch exist shell", branchExistShell)
-//	branchExist := exec.Command("bash", "-c", branchExistShell)
-//	// 创建一个buffer来保存命令的输出
+//	// 创建一个buffer来保存命令的输出（虽然在这个命令中我们可能不需要输出）
 //	var out bytes.Buffer
-//	branchExist.Stdout = &out
+//	cmd.Stdout = &out
 //
-//	if err := branchExist.Run(); err != nil {
+//	// 执行命令
+//	err := cmd.Run()
+//
+//	// 检查命令执行是否成功
+//	if err != nil {
+//		// 如果命令执行失败（即分支不存在），则认为是正常情况，返回false和nil
+//		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.Exited() && exitErr.ExitCode() == 1 {
+//			return false, nil
+//		}
+//		// 如果命令执行失败且不是因为我们预期的退出码（1），则返回错误
 //		return false, err
 //	}
-//	output := out.String()
-//	fmt.Println("||||||  out.String()", out.String())
-//	if output == "" {
-//		return false, nil
-//	}
-//	return true, nil
 //
+//	// 如果命令成功执行（即没有错误返回），则认为分支存在
+//	return true, nil
 //}
+
+func isBranchExist(base_branch string) (bool, error) {
+	// 执行 git status --short --branch 命令
+
+	branchExistShell := "git ls-remote origin " + base_branch
+	fmt.Println("|||| branch exist shell", branchExistShell)
+	branchExist := exec.Command("bash", "-c", branchExistShell)
+	// 创建一个buffer来保存命令的输出
+	var out bytes.Buffer
+	branchExist.Stdout = &out
+
+	if err := branchExist.Run(); err != nil {
+		return false, err
+	}
+	output := out.String()
+	fmt.Println("||||||  out.String()", out.String())
+	if output == "" {
+		return false, nil
+	}
+	return true, nil
+
+}
 
 func readFile(filename string, res *ProfileRes) error {
 	data, err := ioutil.ReadFile(filename)
@@ -546,10 +532,10 @@ func readFile(filename string, res *ProfileRes) error {
 			log.Errorf("readFile file not found:%v", err)
 			return errors.New("File not found")
 		} else {
-			return err
+			*res = ProfileRes(data)
 		}
 	}
-	*res = ProfileRes(data)
+
 	return nil
 }
 
