@@ -180,7 +180,9 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
 					}
 					// 保存一下文件路径
-					err = saveToFile(agent.FilePath, res)
+					if err == nil {
+						err = saveToFile(agent.FilePath, res)
+					}
 					if err != nil {
 						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
 					}
