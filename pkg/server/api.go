@@ -517,6 +517,16 @@ func readFile(filename string, res *ProfileRes) error {
 	return nil
 }
 
+func truncFile(filename string) {
+	// 打开文件，O_RDWR表示可读可写，O_CREATE表示如果文件不存在则创建，O_TRUNC表示清空文件
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC, 0666)
+	if err != nil {
+		fmt.Printf("Failed to open file: %v\n", err)
+		return
+	}
+	defer file.Close()
+}
+
 func saveToFile(filename string, content ProfileRes) error {
 	if _, err := os.Stat(filepath.Dir(filename)); os.IsNotExist(err) {
 		err := os.MkdirAll(filepath.Dir(filename), 0755)
@@ -604,9 +614,11 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 					if err != nil {
 						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
 					}
-					// 保存一下文件路径
-					log.Infof("agent%s connected, get profile from rpc, and save to file:%s", agent.Id, agent.FilePath)
-					err = saveToFile(agent.FilePath, res)
+					if err == nil {
+						// 如果没有报错，则保存一下最新的覆盖率文件
+						log.Infof("agent%s connected, get profile from rpc, and save to file:%s", agent.Id, agent.FilePath)
+						err = saveToFile(agent.FilePath, res)
+					}
 					if err != nil {
 						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
 					}
@@ -714,9 +726,11 @@ func (gs *gocServer) resetProfiles(c *gin.Context) {
 			// lock-free
 			rpc := agent.rpc
 			if rpc == nil || agent.Status == DISCONNECT {
+				truncFile(agent.FilePath)
 				return
 			}
 			err := rpc.Call("GocAgent.ResetProfile", req, &res)
+			truncFile(agent.FilePath)
 			if err != nil {
 				log.Errorf("fail to reset profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
 				// 关闭链接
