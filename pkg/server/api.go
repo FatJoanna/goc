@@ -114,135 +114,24 @@ func (gs *gocServer) removeAgents(c *gin.Context) {
 }
 
 func (gs *gocServer) getProfiles_html(c *gin.Context) {
-	idQuery := c.Query("id")
-	ifInIdMap := idMaps(idQuery)
-	base_branch := c.Query("base")
-	if base_branch == "" {
+	baseBranch := c.Query("base")
+	if baseBranch == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": "缺少base参数，值为分支名字",
 		})
 		return
 	}
-	GO_PROJ_DIR := os.Getenv("GO_PROJ_DIR")
-	if GO_PROJ_DIR == "" {
+	GoProjDir := os.Getenv("GO_PROJ_DIR")
+	if GoProjDir == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": "缺少环境变量 GO_PROJ_DIR，值为maigo工程路径",
 		})
 		return
 	}
-
-	diff_type := c.Query("type")
-
-	skippatternRaw := c.Query("skippattern")
-	var skippattern []string
-	if skippatternRaw != "" {
-		skippattern = strings.Split(skippatternRaw, ",")
-	}
-
+	diffType := c.Query("type")
 	extra := c.Query("extra")
-	isExtra := filterExtra(extra)
 
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	mergedProfiles := make([][]*cover.Profile, 0)
-
-	gs.agents.Range(func(key, value interface{}) bool {
-		// check if id is in the query ids
-		if !ifInIdMap(key.(string)) {
-			// not in
-			return true
-		}
-
-		agent, ok := value.(*gocCoveredAgent)
-		if !ok {
-			return false
-		}
-
-		// check if extra matches
-		if !isExtra(agent.Extra) {
-			// not match
-			return true
-		}
-
-		wg.Add(1)
-		// 并发 rpc，且每个 rpc 设超时时间 10 second
-		go func() {
-			defer wg.Done()
-
-			timeout := time.Duration(10 * time.Second)
-			done := make(chan error, 1)
-
-			var req ProfileReq = "getprofile"
-			var res ProfileRes
-			go func() {
-				// lock-free
-				rpc := agent.rpc
-				if rpc == nil || agent.Status == DISCONNECT {
-					err := readFile(agent.FilePath, &res)
-					if err != nil {
-						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
-					}
-					done <- nil
-
-				} else if rpc != nil && agent.Status != DISCONNECT {
-					err := agent.rpc.Call("GocAgent.GetProfile", req, &res)
-					if err != nil {
-						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
-					}
-					// 保存一下文件路径
-					if err == nil {
-						err = saveToFile(agent.FilePath, res)
-					}
-					if err != nil {
-						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
-					}
-					done <- err
-				} else {
-					log.Errorf("fail return")
-					done <- nil
-					return
-				}
-
-			}()
-
-			select {
-			// rpc 超时
-			case <-time.After(timeout):
-				log.Warnf("rpc call timeout: %v", agent.Hostname)
-				// 关闭链接
-				agent.closeRpcConnOnce()
-			case err := <-done:
-				// 调用 rpc 发生错误
-				if err != nil {
-					// 关闭链接
-					agent.closeRpcConnOnce()
-				}
-			}
-			// append profile
-			profile, err := convertProfile([]byte(res))
-			if err != nil {
-				log.Errorf("fail to convert the received profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
-				// 关闭链接
-				agent.closeRpcConnOnce()
-				return
-			}
-
-			// check if skippattern matches
-			newProfile := filterProfileByPattern(skippattern, profile)
-
-			mu.Lock()
-			defer mu.Unlock()
-			mergedProfiles = append(mergedProfiles, newProfile)
-		}()
-
-		return true
-	})
-
-	// 一直等待并发的 rpc 都回应
-	wg.Wait()
-
-	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
+	merged, err := gs.getMergedProfiles(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": err.Error(),
@@ -261,7 +150,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	}
 	// ------------    generate html    -------------
 	// 改变当前工作目录
-	err = os.Chdir(GO_PROJ_DIR)
+	err = os.Chdir(GoProjDir)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": "change to project dir failed!" + err.Error(),
@@ -278,13 +167,13 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		fmt.Println("Error checking Git status:", err)
 		return
 	}
-	branchExist, err := isBranchExist(base_branch)
+	branchExist, err := isBranchExist(baseBranch)
 	fmt.Println("|||||  branch exist", branchExist)
 	if err == nil && !branchExist {
 		fmt.Println("|||||| branch not exist, get from cache file")
 		var htmlContent []byte
 		var fileErr error
-		if diff_type != "diff" {
+		if diffType != "diff" {
 			htmlContent, fileErr = ioutil.ReadFile(outputHTMLFilePath)
 
 		} else {
@@ -303,10 +192,10 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		return
 
 	}
-	fmt.Println("||||    branch exist generate new diff result")
-	cmdChangeBranchShell := "git reset --hard && git fetch && git checkout " + base_branch + " && git pull"
+	log.Infof(" branch exist, generate new diff result")
+	cmdChangeBranchShell := "git reset --hard && git fetch && git checkout " + baseBranch + " && git pull"
 	if detached {
-		cmdChangeBranchShell = "git stash && git checkout " + base_branch
+		cmdChangeBranchShell = "git stash && git checkout " + baseBranch
 		log.Infof("当前处于游离头状态")
 	} else {
 		log.Infof("当前不在游离头状态")
@@ -345,7 +234,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		}
 	}
 
-	if diff_type == "diff" {
+	if diffType == "diff" {
 		outputHTMLFilePath = "coverage" + extra + ".xml"
 	}
 
@@ -361,7 +250,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 
 	// 创建第二个命令 gocov-html
 	cmdHTML := exec.Command("gocov-html")
-	if diff_type == "diff" {
+	if diffType == "diff" {
 		cmdHTML = exec.Command("gocov-xml")
 	}
 
@@ -436,20 +325,20 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		return
 	}
 
-	if diff_type == "diff" {
+	if diffType == "diff" {
 		// 定义要执行的命令和参数
-		compare_branch := c.Query("compare")
-		if compare_branch == "" {
-			compare_branch = "master"
+		compareBranch := c.Query("compare")
+		if compareBranch == "" {
+			compareBranch = "master"
 		}
-		cmdDIFFCover := exec.Command("diff-cover", outputHTMLFilePath, "--compare-branch="+compare_branch, "--html-report", reportHTMLFilePath)
+		cmdDIFFCover := exec.Command("diff-cover", outputHTMLFilePath, "--compare-branch="+compareBranch, "--html-report", reportHTMLFilePath)
 
 		// 创建一个新的缓冲变量来存储命令的输出
 		cmdDIFFCover.Stdout = &out    // 将命令的标准输出重定向到我们的缓冲变量
 		cmdDIFFCover.Stderr = &stderr // 将命令的标准错误输出重定向到我们的缓冲变量（如果需要的话）
 
 		// 执行命令
-		log.Infof("diff-cover start")
+		log.Infof("diff-cover start...")
 		err = cmdDIFFCover.Run()
 		if err != nil {
 			// 如果有错误，打印到标准错误并返回非零退出码
@@ -463,7 +352,7 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 		htmlContent, err = ioutil.ReadFile(reportHTMLFilePath)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"msg": "read file reporthtml file path failed" + err.Error(),
+				"msg": "read file report html file path failed" + err.Error(),
 			})
 			return
 		}
@@ -565,9 +454,7 @@ func saveToFile(filename string, content ProfileRes) error {
 }
 
 // getProfiles get and merge all agents' informations
-//
-// it is synchronous
-func (gs *gocServer) getProfiles(c *gin.Context) {
+func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error) {
 	idQuery := c.Query("id")
 	ifInIdMap := idMaps(idQuery)
 
@@ -689,6 +576,12 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 	wg.Wait()
 	log.Infof("start cov merge multiple profiles, count:%d", len(mergedProfiles))
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
+	return merged, err
+}
+
+// it is synchronous
+func (gs *gocServer) getProfiles(c *gin.Context) {
+	merged, err := gs.getMergedProfiles(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"msg": err.Error(),

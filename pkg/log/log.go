@@ -31,27 +31,27 @@ func NewLogger(debug bool) {
 }
 
 func Debugf(format string, args ...interface{}) {
-	g.Debugf(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Debugf(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func Donef(format string, args ...interface{}) {
-	g.Donef(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Donef(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func Infof(format string, args ...interface{}) {
-	g.Infof(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Infof(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func Warnf(format string, args ...interface{}) {
-	g.Warnf(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Warnf(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func Fatalf(format string, args ...interface{}) {
-	g.Fatalf(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Fatalf(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func Errorf(format string, args ...interface{}) {
-	g.Errorf(time.Now().Format("2006-01-02 15:04:05")+format, args...)
+	g.Errorf(time.Now().Format("2006-01-02 15:04:05")+" "+format, args...)
 }
 
 func StartWait(message string) {
