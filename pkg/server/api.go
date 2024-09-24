@@ -512,8 +512,11 @@ func readFile(filename string, res *ProfileRes) error {
 			log.Errorf("readFile file not found:%v", err)
 			return errors.New("File not found")
 		} else {
-			*res = ProfileRes(data)
+			log.Errorf("readFile file read error:%v", err)
+			return errors.New("File read error")
 		}
+	} else {
+		*res = ProfileRes(data)
 	}
 
 	return nil
@@ -607,6 +610,7 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 					log.Infof("agent:%s is disconnect, get profile from file:%s", agent.Id, agent.FilePath)
 					err := readFile(agent.FilePath, &res)
 					if err != nil {
+						// TODO 如果已经disconnect，且读取文件失败，则清掉此agent
 						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
 					}
 					done <- nil
