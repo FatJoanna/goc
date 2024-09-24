@@ -62,6 +62,17 @@ func (gs *gocServer) listAgents(c *gin.Context) {
 	})
 }
 
+func (gs *gocServer) removeAgent(id string) {
+	// 当rpc  disconnected且没有缓存文件时，清掉agent
+
+	err := gs.removeAgentFromStore(id)
+	if err != nil {
+		log.Errorf("fail to remove agent: %v", id)
+		err = fmt.Errorf("fail to remove agent: %v, err: %v", id, err)
+	}
+	gs.agents.Delete(id)
+}
+
 func (gs *gocServer) removeAgents(c *gin.Context) {
 	idQuery := c.Query("id")
 	ifInIdMap := idMaps(idQuery)
@@ -610,7 +621,9 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 					log.Infof("agent:%s is disconnect, get profile from file:%s", agent.Id, agent.FilePath)
 					err := readFile(agent.FilePath, &res)
 					if err != nil {
-						// TODO 如果已经disconnect，且读取文件失败，则清掉此agent
+						if err.Error() == "File not found" {
+							gs.removeAgent(agent.Id)
+						}
 						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
 					}
 					done <- nil
