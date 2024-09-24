@@ -478,36 +478,11 @@ func isDetachedHead() (bool, error) {
 	return strings.Contains(output, "HEAD (detached"), nil
 }
 
-//func isBranchExist(baseBranch string) (bool, error) {
-//	// 构造Git命令来验证远程分支是否存在
-//	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", fmt.Sprintf("refs/remotes/origin/%s", baseBranch))
-//
-//	// 创建一个buffer来保存命令的输出（虽然在这个命令中我们可能不需要输出）
-//	var out bytes.Buffer
-//	cmd.Stdout = &out
-//
-//	// 执行命令
-//	err := cmd.Run()
-//
-//	// 检查命令执行是否成功
-//	if err != nil {
-//		// 如果命令执行失败（即分支不存在），则认为是正常情况，返回false和nil
-//		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.Exited() && exitErr.ExitCode() == 1 {
-//			return false, nil
-//		}
-//		// 如果命令执行失败且不是因为我们预期的退出码（1），则返回错误
-//		return false, err
-//	}
-//
-//	// 如果命令成功执行（即没有错误返回），则认为分支存在
-//	return true, nil
-//}
-
 func isBranchExist(base_branch string) (bool, error) {
 	// 执行 git status --short --branch 命令
 
 	branchExistShell := "git ls-remote origin " + base_branch
-	fmt.Println("|||| branch exist shell", branchExistShell)
+	log.Infof("start check branch exist: %s", branchExistShell)
 	branchExist := exec.Command("bash", "-c", branchExistShell)
 	// 创建一个buffer来保存命令的输出
 	var out bytes.Buffer
@@ -517,7 +492,7 @@ func isBranchExist(base_branch string) (bool, error) {
 		return false, err
 	}
 	output := out.String()
-	fmt.Println("||||||  out.String()", out.String())
+	log.Infof("check branch exist: %s", output)
 	if output == "" {
 		return false, nil
 	}
@@ -612,11 +587,12 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 
 			var req ProfileReq = "getprofile"
 			var res ProfileRes
-			fmt.Printf("||||||   agent:%v\n", agent)
+			log.Infof("get profile agent :%v", agent)
 			go func() {
 				// lock-free
 				rpc := agent.rpc
 				if rpc == nil || agent.Status == DISCONNECT {
+					log.Infof("agent:%s is disconnect, get profile from file:%s", agent.Id, agent.FilePath)
 					err := readFile(agent.FilePath, &res)
 					if err != nil {
 						log.Errorf("fail to read profile from file: %v, reason: %v. let's close the connection", agent.Id, err)
@@ -629,13 +605,14 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 						log.Errorf("fail to get profile from: %v, reason: %v. let's close the connection", agent.Id, err)
 					}
 					// 保存一下文件路径
+					log.Infof("agent%s connected, get profile from rpc, and save to file:%s", agent.Id, agent.FilePath)
 					err = saveToFile(agent.FilePath, res)
 					if err != nil {
 						log.Errorf("fail save to file: %v, reason: %v.", agent.Id, err)
 					}
 					done <- err
 				} else {
-					log.Errorf("fail return")
+					log.Errorf("agent:%s get profile fail return", agent.Id)
 					done <- nil
 					return
 				}
@@ -652,6 +629,7 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 				// 调用 rpc 发生错误
 				if err != nil {
 					// 关闭链接
+					log.Warnf("rpc call err: %v, close rpc", err)
 					agent.closeRpcConnOnce()
 				}
 			}
@@ -669,6 +647,7 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 
 			mu.Lock()
 			defer mu.Unlock()
+			log.Infof("append merge profiles by agent.id:%s", agent.Id)
 			mergedProfiles = append(mergedProfiles, newProfile)
 		}()
 
@@ -677,7 +656,7 @@ func (gs *gocServer) getProfiles(c *gin.Context) {
 
 	// 一直等待并发的 rpc 都回应
 	wg.Wait()
-
+	log.Infof("start cov merge multiple profiles, count:%d", len(mergedProfiles))
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
