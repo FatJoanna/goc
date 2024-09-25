@@ -474,6 +474,7 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 
 	mergedProfiles := make([][]*cover.Profile, 0)
 	var mergedAgentsInfo map[int][]*cover.Profile
+	mergedAgentsInfo = make(map[int][]*cover.Profile)
 
 	gs.agents.Range(func(key, value interface{}) bool {
 		// check if id is in the query ids
