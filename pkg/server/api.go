@@ -24,6 +24,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -471,6 +473,7 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 	var wg sync.WaitGroup
 
 	mergedProfiles := make([][]*cover.Profile, 0)
+	var mergedAgentsInfo map[int][]*cover.Profile
 
 	gs.agents.Range(func(key, value interface{}) bool {
 		// check if id is in the query ids
@@ -566,6 +569,11 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 			mu.Lock()
 			defer mu.Unlock()
 			log.Infof("append merge profiles by agent.id:%s", agent.Id)
+			agentId, err := strconv.Atoi(agent.Id)
+			if err != nil {
+				log.Errorf("fail to convert agent id to int: %v, reason: %v", agent.Id, err)
+			}
+			mergedAgentsInfo[agentId] = newProfile
 			mergedProfiles = append(mergedProfiles, newProfile)
 		}()
 
@@ -576,6 +584,29 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 	wg.Wait()
 	log.Infof("start cov merge multiple profiles, count:%d", len(mergedProfiles))
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
+	if err != nil {
+		log.Errorf("merge multiple profiles error: %v", err)
+		log.Infof(" merged agents info:%v", mergedAgentsInfo)
+		// 将map的key值存储到slice中
+		keys := make([]int, 0, len(mergedAgentsInfo))
+		for k := range mergedAgentsInfo {
+			keys = append(keys, k)
+		}
+
+		// 对slice进行排序
+		sort.Ints(keys)
+
+		// 获取最大的key值
+		maxKey := keys[len(keys)-1]
+		log.Infof("Max key:", maxKey)
+		mergedProfiles = mergedProfiles[:0]
+		mergedProfiles = append(mergedProfiles, mergedAgentsInfo[maxKey])
+		merged, err = cov.MergeMultipleProfiles(mergedProfiles)
+		if err != nil {
+			return merged, err
+		}
+	}
+
 	return merged, err
 }
 
