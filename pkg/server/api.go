@@ -587,7 +587,6 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
 	if err != nil {
 		log.Errorf("merge multiple profiles error: %v", err)
-		log.Infof(" merged agents info:%v", mergedAgentsInfo)
 		// 将map的key值存储到slice中
 		keys := make([]int, 0, len(mergedAgentsInfo))
 		for k := range mergedAgentsInfo {
@@ -596,6 +595,7 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 
 		// 对slice进行排序
 		sort.Ints(keys)
+		log.Infof(" merged agents keys:%v", keys)
 
 		// 获取最大的key值
 		maxKey := keys[len(keys)-1]
