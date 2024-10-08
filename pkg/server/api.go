@@ -584,8 +584,9 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 	// 一直等待并发的 rpc 都回应
 	wg.Wait()
 	log.Infof("start cov merge multiple profiles, count:%d", len(mergedProfiles))
+	log.Infof("start cov merge agent info, count:%d", len(mergedAgentsInfo))
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
-	if err != nil {
+	if err != nil && len(mergedProfiles) > 0 {
 		log.Errorf("merge multiple profiles error: %v", err)
 		// 将map的key值存储到slice中
 		keys := make([]int, 0, len(mergedAgentsInfo))
