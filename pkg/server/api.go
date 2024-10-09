@@ -166,13 +166,13 @@ func (gs *gocServer) getProfiles_html(c *gin.Context) {
 	// 判断是否处于流离标头状态，切换代码的方法不一样
 	detached, err := isDetachedHead()
 	if err != nil {
-		fmt.Println("Error checking Git status:", err)
+		log.Infof("Error checking Git status:", err)
 		return
 	}
 	branchExist, err := isBranchExist(baseBranch)
-	fmt.Println("|||||  branch exist", branchExist)
+	log.Infof("branch exist", branchExist)
 	if err == nil && !branchExist {
-		fmt.Println("|||||| branch not exist, get from cache file")
+		log.Infof("branch not exist, get from cache file")
 		var htmlContent []byte
 		var fileErr error
 		if diffType != "diff" {
@@ -424,14 +424,33 @@ func readFile(filename string, res *ProfileRes) error {
 	return nil
 }
 
-func truncFile(filename string) {
-	// 打开文件，O_RDWR表示可读可写，O_CREATE表示如果文件不存在则创建，O_TRUNC表示清空文件
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC, 0666)
+func deleteFile(filePath string) {
+	// 需要先检查文件是否存在，然后再删除
+	// 使用 os.Stat 检查文件是否存在
+	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		fmt.Printf("Failed to open file: %v\n", err)
-		return
+		if os.IsNotExist(err) {
+			// 文件不存在
+			log.Infof("文件 %s 不存在（在删除前检查）\n", filePath)
+		} else {
+			// 其他类型的错误
+			log.Infof("检查文件 %s 时出错: %v\n", filePath, err)
+		}
+	} else {
+		// 文件存在，是一个常规文件吗？
+		if !fileInfo.IsDir() {
+			// 删除文件
+			err := os.Remove(filePath)
+			if err != nil {
+				log.Infof("删除文件 %s 时出错: %v\n", filePath, err)
+			} else {
+				log.Infof("文件 %s 已成功删除（在检查之后）\n", filePath)
+			}
+		} else {
+			// 路径存在，但它是一个目录，不是文件
+			log.Infof("路径 %s 是一个目录，不是文件\n", filePath)
+		}
 	}
-	defer file.Close()
 }
 
 func saveToFile(filename string, content ProfileRes) error {
@@ -586,8 +605,13 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 	log.Infof("start cov merge multiple profiles, count:%d", len(mergedProfiles))
 	log.Infof("start cov merge agent info, count:%d", len(mergedAgentsInfo))
 	merged, err := cov.MergeMultipleProfiles(mergedProfiles)
-	if err != nil && len(mergedProfiles) > 0 {
-		log.Errorf("merge multiple profiles error: %v", err)
+	if err != nil {
+		// 如果发生错误且mergedProfiles不为空，则记录错误并尝试处理
+		if len(mergedProfiles) > 0 {
+			log.Errorf("merge multiple profiles error: %v", err)
+		} else {
+			return merged, err
+		}
 		// 将map的key值存储到slice中
 		keys := make([]int, 0, len(mergedAgentsInfo))
 		for k := range mergedAgentsInfo {
@@ -595,15 +619,24 @@ func (gs *gocServer) getMergedProfiles(c *gin.Context) ([]*cover.Profile, error)
 		}
 
 		// 对slice进行排序
-		sort.Ints(keys)
+		sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 		log.Infof(" merged agents keys:%v", keys)
 
 		// 获取最大的key值
 		maxKey := keys[len(keys)-1]
 		log.Infof("Max key:", maxKey)
+		//这里是只取最新的一个文件
+		//mergedProfiles = mergedProfiles[:0]
+		//mergedProfiles = append(mergedProfiles, mergedAgentsInfo[maxKey])
+
+		//进行预处理
+		//排序，按照id由小到大排序（这里设定id大的为新代码）
 		mergedProfiles = mergedProfiles[:0]
-		mergedProfiles = append(mergedProfiles, mergedAgentsInfo[maxKey])
-		merged, err = cov.MergeMultipleProfiles(mergedProfiles)
+		for _, key := range keys {
+			p := mergedAgentsInfo[key]
+			mergedProfiles = append(mergedProfiles, p)
+		}
+		merged, err = MergeMultipleProfiles(mergedProfiles)
 		if err != nil {
 			return merged, err
 		}
@@ -671,11 +704,11 @@ func (gs *gocServer) resetProfiles(c *gin.Context) {
 			// lock-free
 			rpc := agent.rpc
 			if rpc == nil || agent.Status == DISCONNECT {
-				truncFile(agent.FilePath)
+				deleteFile(agent.FilePath)
 				return
 			}
 			err := rpc.Call("GocAgent.ResetProfile", req, &res)
-			truncFile(agent.FilePath)
+			deleteFile(agent.FilePath)
 			if err != nil {
 				log.Errorf("fail to reset profile from: %v, reasson: %v. let's close the connection", agent.Id, err)
 				// 关闭链接
