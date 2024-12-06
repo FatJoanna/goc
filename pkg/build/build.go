@@ -35,6 +35,7 @@ type Build struct {
 	GOPATH           string
 	GOBIN            string
 	CurWd            string
+	AdDirs           string
 	TmpWd            string
 	CurModProjectDir string
 	TmpModProjectDir string

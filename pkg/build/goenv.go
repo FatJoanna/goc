@@ -16,6 +16,7 @@ package build
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -34,6 +35,15 @@ func (b *Build) readProjectMetaInfo() {
 	// 获取 [packages] 及其依赖的 package list
 	log.Infof("b.curwd:%v", b.CurWd)
 	pkgs := b.listPackages(b.CurWd)
+	if b.AdDirs != "" {
+		for _, d := range strings.Split(b.AdDirs, ",") {
+			pkgsAdd := b.listPackages(d)
+			for k, v := range pkgsAdd {
+				pkgs[k] = v
+			}
+		}
+	}
+	fmt.Println("||||  pkgs", pkgs)
 
 	// get mod info
 	for _, pkg := range pkgs {

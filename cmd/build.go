@@ -29,12 +29,15 @@ var (
 	gocmode string
 	gochost string
 	gocdir  string
+	addir   string
 )
 
 func init() {
 	buildCmd.Flags().StringVarP(&gocmode, "gocmode", "", "count", "coverage mode: set, count, atomic, watch")
 	buildCmd.Flags().StringVarP(&gochost, "gochost", "", "127.0.0.1:7777", "specify the host of the goc sever")
-	buildCmd.Flags().StringVarP(&gocdir, "gocdir", "", "", "相对路径，比如当前在maigo目录下，要插桩content/gosssip,--gocdir=contnt/gossip")
+	buildCmd.Flags().StringVarP(&gocdir, "gocdir", "", "", "相对路径，比如当前在maigo目录下，要插桩content/gosssip,--gocdir=content/gossip")
+	buildCmd.Flags().StringVarP(&addir, "addir", "", "", "相对路径，比如当前在maigo目录下，要插桩content/gosssip,--addir='contnt/common,content/infra'")
+
 	rootCmd.AddCommand(buildCmd)
 }
 
@@ -46,6 +49,7 @@ func buildAction(cmd *cobra.Command, args []string) {
 		build.WithHost(gochost),
 		build.WithMode(gocmode),
 		build.WithDir(gocdir),
+		build.WithAdDir(addir),
 		build.WithFlagSets(sets),
 		build.WithArgs(args),
 		build.WithBuild(),

@@ -37,6 +37,14 @@ func WithDir(gocdir string) gocOption {
 		b.CurWd = gocdir
 	}
 }
+
+func WithAdDir(addirs string) gocOption {
+	return func(b *Build) {
+		log.Infof("goc additional dir config")
+		b.AdDirs = addirs
+	}
+}
+
 func WithArgs(args []string) gocOption {
 	return func(b *Build) {
 		b.Args = args
