@@ -20,9 +20,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qiniu/goc/v2/pkg/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"goc/pkg/log"
 )
 
 var buildUsage string = `Usage:

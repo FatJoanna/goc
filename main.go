@@ -14,7 +14,7 @@
 package main
 
 import (
-	"github.com/qiniu/goc/v2/cmd"
+	"goc/cmd"
 )
 
 func main() {

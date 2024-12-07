@@ -14,8 +14,8 @@
 package build
 
 import (
-	"github.com/qiniu/goc/v2/pkg/log"
 	"github.com/spf13/pflag"
+	"goc/pkg/log"
 )
 
 type gocOption func(*Build)

@@ -15,8 +15,8 @@ package rest
 
 import (
 	"github.com/go-resty/resty/v2"
-	"github.com/qiniu/goc/v2/pkg/client/rest/agent"
-	"github.com/qiniu/goc/v2/pkg/client/rest/profile"
+	"goc/pkg/client/rest/agent"
+	"goc/pkg/client/rest/profile"
 )
 
 // V2Client provides methods contact with the covered agent under test

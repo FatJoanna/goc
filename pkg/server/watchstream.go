@@ -20,7 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 )
 
 func (gs *gocServer) serveWatchInternalStream(c *gin.Context) {

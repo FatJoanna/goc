@@ -17,8 +17,8 @@ import (
 	"os"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/qiniu/goc/v2/pkg/client/rest"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/client/rest"
+	"goc/pkg/log"
 )
 
 const (

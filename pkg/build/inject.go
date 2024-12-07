@@ -19,9 +19,9 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/qiniu/goc/v2/pkg/build/internal/tool"
-	"github.com/qiniu/goc/v2/pkg/build/internal/websocket"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/build/internal/tool"
+	"goc/pkg/build/internal/websocket"
+	"goc/pkg/log"
 )
 
 // Inject injects cover variables for all the .go files in the target directory

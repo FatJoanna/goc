@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qiniu/goc/v2/pkg/log"
 	"github.com/tongjingran/copy"
+	"goc/pkg/log"
 	"golang.org/x/mod/modfile"
 )
 

@@ -17,7 +17,7 @@ import (
 	"fmt"
 
 	"github.com/gorilla/websocket"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 )
 
 func Watch(host string) {

@@ -1,4 +1,4 @@
-module github.com/qiniu/goc/v2
+module goc
 
 go 1.16
 

@@ -20,9 +20,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/qiniu/goc/v2/pkg/client/rest"
-	"github.com/qiniu/goc/v2/pkg/client/rest/profile"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/client/rest"
+	"goc/pkg/client/rest/profile"
+	"goc/pkg/log"
 )
 
 func GetProfile(host string, ids []string, skips []string, extra string, output string) {

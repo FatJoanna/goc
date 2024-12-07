@@ -14,8 +14,8 @@
 package cmd
 
 import (
-	"github.com/qiniu/goc/v2/pkg/log"
 	"github.com/spf13/cobra"
+	"goc/pkg/log"
 	"golang.org/x/tools/cover"
 	"k8s.io/test-infra/gopherage/pkg/cov"
 	"k8s.io/test-infra/gopherage/pkg/util"

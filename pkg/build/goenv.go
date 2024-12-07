@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 )
 
 // readProjectMetaInfo reads all meta informations of the corresponding project

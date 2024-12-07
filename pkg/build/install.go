@@ -17,7 +17,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 )
 
 func NewInstall(opts ...gocOption) *Build {

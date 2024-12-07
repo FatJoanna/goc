@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 )
 
 // serveRpcStream holds connection between goc server and agent.

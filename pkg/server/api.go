@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/qiniu/goc/v2/pkg/log"
+	"goc/pkg/log"
 	"golang.org/x/tools/cover"
 	"k8s.io/test-infra/gopherage/pkg/cov"
 )

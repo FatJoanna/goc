@@ -14,8 +14,8 @@
 package cmd
 
 import (
-	cli "github.com/qiniu/goc/v2/pkg/watch"
 	"github.com/spf13/cobra"
+	cli "goc/pkg/watch"
 )
 
 var watchCmd = &cobra.Command{
