@@ -122,6 +122,7 @@ func (b *Build) listPackages(dir string) map[string]*Package {
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	out, err := cmd.Output()
+	log.Infof("go list cmd is: %v, in path [%v]", nicePrintArgs(cmd.Args), cmd.Dir)
 	if err != nil {
 		log.Fatalf("execute go list -json failed, err: %v, stdout: %v, stderr: %v", err, string(out), errBuf.String())
 	}

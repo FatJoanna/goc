@@ -33,6 +33,7 @@ func WithMode(mode string) gocOption {
 }
 func WithDir(gocdir string) gocOption {
 	return func(b *Build) {
+		log.Infof("goc v2 version 202412101555")
 		log.Infof("gocdir config")
 		b.CurWd = gocdir
 	}
@@ -40,7 +41,7 @@ func WithDir(gocdir string) gocOption {
 
 func WithAdDir(addirs string) gocOption {
 	return func(b *Build) {
-		log.Infof("goc additional dir config")
+		log.Infof("goc additional dir config", addirs)
 		b.AdDirs = addirs
 	}
 }
